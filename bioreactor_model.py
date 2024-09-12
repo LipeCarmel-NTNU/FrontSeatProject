@@ -4,8 +4,8 @@ def bioreactor_model(x, FlowVar, par):
     # States
     V, X, S, CO2 = x[0], x[1], x[2], x[3]
 
-    if S < 0:
-        S = 0
+    # if S < 0:
+    #     S = 0
 
     # Manipulated variables
     Fin = FlowVar[0]
