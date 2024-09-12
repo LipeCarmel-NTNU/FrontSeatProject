@@ -17,7 +17,7 @@ n_controls = 2
 n_horizon = 10
 time_horizon = 5/6
 
-bioreactor_mpc = BioReactorMPC(x0, u0, n_states, n_controls, n_horizon, time_horizon, n_int=1)
+bioreactor_mpc = BioReactorMPC(x0, u0, n_states, n_controls, n_horizon, time_horizon)
 
 # Set bounds for the optimization variables
 # Bound controls
@@ -35,7 +35,7 @@ x_max = 100.0
 s_min = 0.0
 s_max = 100.0
 co2_min = 0.0
-co2_max = 1.0
+co2_max = 100.0
 lb = np.array([v_min, x_min, s_min, co2_min])
 ub = np.array([v_max, x_max, s_max, co2_max])
 bioreactor_mpc.set_bounds_x(lb, ub)
@@ -47,14 +47,11 @@ bioreactor_mpc.bioreactor_model()
 # Define the gains for the cost function
 gains = {
     'k_volume': 1e1,
-    'k_biomass': 1,
-    'reg': 0,
+    'k_biomass': 100,
+    'reg': 1,
 }
 # Create the cost function
 bioreactor_mpc.cost_function(gains, xdes=xd)
-
-# # Add initial state constraints
-# bioreactor_mpc.add_constraint([bioreactor_mpc.state[0]], np.reshape(x0, (-1,1)), np.reshape(x0, (-1,1)))
 
 # Define the multiple shooting constraints
 bioreactor_mpc.integrator()
@@ -69,7 +66,7 @@ terminal_gains = {
 # bioreactor_mpc.set_terminal_cost(xd, terminal_gains)
 
 # Set initial guess
-# bioreactor_mpc.opt_var_0, v_init, x_init, s_init, co2_init, F0_init, F1_init = bioreactor_mpc.init_values(x0, u0)
+bioreactor_mpc.opt_var_0, v_init, x_init, s_init, co2_init, F0_init, F1_init = bioreactor_mpc.init_values(x0, u0)
 
 # tgrid0 = np.linspace(0, bioreactor_mpc.T, bioreactor_mpc.N)
 
@@ -131,8 +128,9 @@ for i in range(n_steps):
     control_hist.append(control)
     
     # Update the system state
-    new_state = bioreactor_mpc.update_state(x_meas, control)
-    x_meas = new_state['xf'].full().flatten().tolist()
+    new_state = bioreactor_mpc.update_state(x0=x_meas, u0=control)
+    x_meas = new_state['xf'].full().flatten()
+    # x_meas = x_meas_.tolist()
     
     state_hist.append(x_meas)
 
@@ -147,9 +145,12 @@ co2_opt = [state_hist[i][3] for i in range(len(state_hist))]
 F0_opt = [control_hist[i][0] for i in range(len(control_hist))]
 F1_opt = [control_hist[i][1] for i in range(len(control_hist))]
 
+# print(type(F0_opt[0]))
+# input("Press Enter to continue...")
+
 
 # Plot the results
-tgrid = np.linspace(0, bioreactor_mpc.T, bioreactor_mpc.N)
+tgrid = np.linspace(0, bioreactor_mpc.T, n_steps+1)
 #print(tgrid)
 
 # print optimal state variables
@@ -185,13 +186,13 @@ plt.grid()
 # print optimal controls
 plt.figure(4)
 plt.subplot(2, 1, 1)
-plt.plot(tgrid, F0_opt, '-o', label='Feed')
+plt.plot(tgrid[:-1], F0_opt, '-o', label='Feed')
 plt.xlabel('t')
 plt.ylabel('L/h')
 plt.legend()
 plt.grid()
 plt.subplot(2, 1, 2)
-plt.plot(tgrid, F1_opt, '-o', label='Outlet')
+plt.plot(tgrid[:-1], F1_opt, '-o', label='Outlet')
 plt.xlabel('t')
 plt.ylabel('L/h')
 plt.legend()
