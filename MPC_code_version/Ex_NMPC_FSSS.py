@@ -13,21 +13,22 @@ import math
 import scipy.linalg as scla
 import numpy as np
 from Utilities import*
+from Model import *
 
 ### 1) Simulation Fundamentals
 
 # 1.1) Simulation discretization parameters
-Nsim = 50 # Simulation length
+Nsim = 100 # Simulation length
 
 N = 20    # Horizon
 
-h = 0.25 # Time step
+h = 5/60 # Time step
 
 # 3.1.2) Symbolic variables
-xp = SX.sym("xp", 3) # process state vector       
-x = SX.sym("x", 3)  # model state vector          
+xp = SX.sym("xp", 4) # process state vector       
+x = SX.sym("x", 4)  # model state vector          
 u = SX.sym("u", 2)  # control vector              
-y = SX.sym("y", 2)  # measured output vector      
+y = SX.sym("y", 3)  # measured output vector      
 d = SX.sym("d", 0)  # disturbance                     
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -37,42 +38,37 @@ d = SX.sym("d", 0)  # disturbance
 
 
 # State map
-def User_fxp_Cont(x,t,u,pxp,pxmp):
-    """
-    SUMMARY:
-    It constructs the function fx_p for the non-linear case
-        
-    SYNTAX:
-    assignment = User_fxp_Cont(x,t,u)
-        
-    ARGUMENTS:
-    + x         - State variable     
-    + t         - Current time
-    + u         - Input variable  
-        
-    OUTPUTS:
-    + fx_p      - Non-linear plant function
-    """ 
+def User_fxp_Cont(x,t,u,pxp,pxmp):    # States
+    V, X, S, CO2 = x[0], x[1], x[2], x[3]
+
+    # Manipulated variables
+    Fin = u[0]
+    Fout = u[1]
+
+    # Parameters
+    Sin = 200
+    Q = 2
+    V_total = 2.7  # L
+    CO2in = 0.04  # 100*volume fraction of CO2 in feed
+
+    Y_XS = 0.4204
+    mu_max = 0.1945
+    Ks = 0.0070
+    Y_CO2X = 0.5430
+    kd = 0.0060
+
+    # Define the rate
+    mu = mu_max * (S / (Ks + S))
+
+    # Differential equations
+    dV = Fin - Fout
+    dX = -X * (Fin / V) + mu * X - kd * X  # Biomass
+    dS = (Sin - S) * (Fin / V) - mu * X / Y_XS  # Substrate
+    dCO2 = ((CO2in - CO2) * Q + mu * X / Y_CO2X) / (V_total - V)  # CO2
+
+    # Output
+    fx_p = ca.vertcat(dV, dX, dS, dCO2) 
     
-    F0 = 0.1 #if_else(t <= 5, 0.1, if_else(t<= 15, 0.11, if_else(t<= 25, 0.08, 0.1)))
-    T0 = 350  # K
-    c0 = 1.0  # kmol/m^3
-    r = 0.219 # m
-    k0 = 7.2e10 # min^-1
-    EoR = 8750 # K
-    U0 = 915.6*60/1000  # kJ/min*m^2*K
-    rho = 1000.0 # kg/m^3
-    Cp = 0.239 # kJ/kg
-    DH = -5.0e4 # kJ/kmol
-    Ar = math.pi*(r**2)
-    
-    fx_p = vertcat\
-    (\
-    F0*(c0 - x[0])/(Ar *x[2]) - k0*exp(-EoR/x[1])*x[0], \
-    F0*(T0 - x[1])/(Ar *x[2]) -DH/(rho*Cp)*k0*exp(-EoR/x[1])*x[0] + \
-    2*U0/(r*rho*Cp)*(u[0] - x[1]), \
-    ((F0 - u[1])/Ar)\
-    )    
     
     return fx_p
 
@@ -80,27 +76,13 @@ Mx = 10 # Number of elements in each time step
 
 # Output map
 def User_fyp(x,u,t,pyp,pymp):
-    """
-    SUMMARY:
-    It constructs the function User_fyp for the non-linear case
-    
-    SYNTAX:
-    assignment = User_fyp(x,t)
-  
-    ARGUMENTS:
-    + x             - State variable
-    + t             - Variable that indicate the current iteration
-    
-    OUTPUTS:
-    + fy_p      - Non-linear plant function     
-    """ 
-    
-    fy_p = vertcat\
+    fy_p = ca.vertcat\
     (\
     x[0],\
-    x[2] \
+    x[1],\
+    x[3] \
     )
-    
+
     return fy_p
 
 # White Noise
@@ -110,68 +92,50 @@ def User_fyp(x,u,t,pyp,pymp):
 # 2.2) Model Parameters
     
 # State Map
-def User_fxm_Cont(x,u,d,t,px):
-    """
-    SUMMARY:
-    It constructs the function fx_model for the non-linear case
-    
-    SYNTAX:
-    assignment = User_fxm_Cont(x,u,d,t)
-  
-    ARGUMENTS:
-    + x,u,d         - State, input and disturbance variable
-    + t             - Variable that indicate the real time
-    
-    OUTPUTS:
-    + x_model       - Non-linear model function     
-    """ 
-    F0 = 0.1# #TODO: what about putting it here? 
-    T0 = 350  # K
-    c0 = 1.0  # kmol/m^3
-    r = 0.219 # m
-    k0 = 7.2e10 # min^-1
-    EoR = 8750 # K
-    U0 = 915.6*60/1000  # kJ/min*m^2*K
-    rho = 1000.0 # kg/m^3
-    Cp = 0.239 # kJ/kg
-    DH = -5.0e4 # kJ/kmol
-    Ar = math.pi*(r**2)
-    
+def User_fxm_Cont(x,u,d,t,px):    
+    # States
+    V, X, S, CO2 = x[0], x[1], x[2], x[3]
 
-    x_model = vertcat\
-    (\
-    F0*(c0 - x[0])/(Ar *x[2]) - k0*exp(-EoR/x[1])*x[0], \
-    F0*(T0 - x[1])/(Ar *x[2]) -DH/(rho*Cp)*k0*exp(-EoR/x[1])*x[0] + \
-    2*U0/(r*rho*Cp)*(u[0] - x[1]), \
-    ((F0 - u[1])/Ar)\
-    )
+    # Manipulated variables
+    Fin = u[0]
+    Fout = u[1]
+
+    # Parameters
+    Sin = 200
+    Q = 2
+    V_total = 2.7  # L
+    CO2in = 0.04  # 100*volume fraction of CO2 in feed
+
+    Y_XS = 0.4204
+    mu_max = 0.1945
+    Ks = 0.0070
+    Y_CO2X = 0.5430
+    kd = 0.0060
+
+    # Define the rate
+    mu = mu_max * (S / (Ks + S))
+
+    # Differential equations
+    dV = Fin - Fout
+    dX = -X * (Fin / V) + mu * X - kd * X  # Biomass
+    dS = (Sin - S) * (Fin / V) - mu * X / Y_XS  # Substrate
+    dCO2 = ((CO2in - CO2) * Q + mu * X / Y_CO2X) / (V_total - V)  # CO2
+
+    # Output
+    fx_p = ca.vertcat(dV, dX, dS, dCO2) 
     
-    return x_model
+    return fx_p
 
 # Output Map
 def User_fym(x,u,d,t,py):
-    """
-    SUMMARY:
-    It constructs the function fy_m for the non-linear case
-    
-    SYNTAX:
-    assignment = User_fym(x,u,d,t)
-  
-    ARGUMENTS:
-    + x,d           - State and disturbance variable
-    + t             - Variable that indicate the current iteration
-    
-    OUTPUTS:
-    + fy_p      - Non-linear plant function     
-    """ 
-    
-    fy_model = vertcat\
-                (\
-                x[0],\
-                x[2]\
-                )
-    
-    return fy_model
+    fy_p = ca.vertcat\
+    (\
+    x[0],\
+    x[1],\
+    x[3] \
+    )
+
+    return fy_p
     
 Mx = 10 # Number of elements in each time step 
 
@@ -179,11 +143,11 @@ Mx = 10 # Number of elements in each time step
 offree = "no" # TODO: this is also to be changed if you wnat to activate the offsetfree potentiality
 
 # 2.4) Initial condition
-xs_CSTR = np.array([0.878, 324.5, 0.659])
-us_CSTR = np.array([300, 0.1])
-x0_m = np.array([0.05, 0.75, 0.85]) * xs_CSTR.ravel()
-x0_p = np.array([0.05, 0.75, 0.85]) * xs_CSTR.ravel()
-u0 = np.array([300.157, 0.1])
+xs_CSTR = np.array([1.0, 10.0, 0.0, 0.0])
+us_CSTR = np.array([0.0, 0.0])
+x0_m = np.array([1.2, 3.0, 10.0, 0.1]) * xs_CSTR.ravel()
+x0_p = np.array([1.2, 3.0, 10.0, 0.1]) * xs_CSTR.ravel()
+u0 = np.array([0.0, 0.0])
 #dhat0 = np.array([0, 0.1]) 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -218,36 +182,41 @@ def defSP(t):
     OUTPUTS:
     + ysp, usp, xsp - Input, output and state setpoint values      
     """ 
-    xsp = np.array([0.878, 324.5, 0.659]) # State setpoints  
-    ysp = np.array([0.878, 0.659]) # Output setpoint
-    usp = np.array([300, 0.1]) # Control setpoints
+    xsp = np.array([1.0, 10.0, 0.0, 0.0]) # State setpoints  
+    ysp = np.array([1.0, 10.0, 0.0]) # Output setpoint
+    usp = np.array([0.0, 0.0]) # Control setpoints
 
     return [ysp, usp, xsp]
     
 # 4.2) Bounds constraints
 ## Input bounds
-umin = np.array([295, 0.00])
-umax = np.array([305, 0.25])
+umin = np.array([0.0, 0.0])
+umax = np.array([0.4, 0.4])
 
 ## State bounds
-xmin = np.array([0.0, 315, 0.50])
-xmax = np.array([1.0, 375, 0.75])
+xmin = np.array([0.5, 0.0, 0.0, 0.0])
+xmax = np.array([2.0, 20, 5.0, 100.0])
 
 ## Output bounds
-ymin = np.array([0.0, 0.5])
-ymax = np.array([1.0, 1.0])
+ymin = np.array([0.5, 0.0, 0.0])
+ymax = np.array([2.0, 20, 5.0])
 
 ## Disturbance bounds
 dmin = -100*np.ones((d.size1(),1))
 dmax = 100*np.ones((d.size1(),1))
 
 # 4.3) Steady-state optimization : objective function
-Qss = np.array([[10.0, 0.0], [0.0, 1.0]]) #Output matrix
-Rss = np.array([[0.0, 0.0], [0.0, 0.0]]) # Control matrix
+Qss = np.zeros([3,3]) #Output matrix
+Rss = np.zeros([2,2]) # Control matrix
 
 # 4.4) Dynamic optimization : objective function 
-Q = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+Q = np.identity(4)# np.zeros([4,4])
+Q[1,1] = 1.0
+Q[2,2] = 10.0
 R = np.array([[0.1, 0.0], [0.0, 0.1]])
+
+slacksG = False
+slacksH = False
 
 # slacks = True
 
