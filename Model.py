@@ -42,3 +42,28 @@ def User_fxp_Cont(x,t,u,pxp,pxmp):
     )    
     
     return fx_p
+
+def User_fyp(x,u,t,pyp,pymp):
+    """
+    SUMMARY:
+    It constructs the function User_fyp for the non-linear case
+    
+    SYNTAX:
+    assignment = User_fyp(x,t)
+  
+    ARGUMENTS:
+    + x             - State variable
+    + t             - Variable that indicate the current iteration
+    
+    OUTPUTS:
+    + fy_p      - Non-linear plant function     
+    """ 
+    
+    fy_p = vertcat\
+    (\
+    x[0],\
+    x[1],\
+    x[3] \
+    )
+    
+    return fy_p
