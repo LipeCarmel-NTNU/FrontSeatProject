@@ -33,7 +33,7 @@ v_max = 2.0
 x_min = 0.0
 x_max = 100.0
 s_min = 0.0
-s_max = 100.0
+s_max = 5.0
 co2_min = 0.0
 co2_max = 100.0
 lb = np.array([v_min, x_min, s_min, co2_min])
@@ -48,7 +48,7 @@ bioreactor_mpc.bioreactor_model()
 gains = {
     'k_volume': 1e1,
     'k_biomass': 100,
-    'reg': 1,
+    'reg': 0,
 }
 # Create the cost function
 bioreactor_mpc.cost_function(gains, xdes=xd)
@@ -112,7 +112,7 @@ bioreactor_mpc.opt_var_0, v_init, x_init, s_init, co2_init, F0_init, F1_init = b
 # Create the optimization problem
 bioreactor_mpc.create_solver()
 
-n_steps = 100
+n_steps = 1000
 
 state_hist = [x0.tolist()]
 control_hist = []
